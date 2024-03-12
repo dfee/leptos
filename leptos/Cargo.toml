@@ -17,6 +17,7 @@ leptos_reactive = { workspace = true }
 leptos_server = { workspace = true }
 leptos_config = { workspace = true }
 leptos-spin-macro = { git = "https://github.com/fermyon/leptos-spin", optional = true}
+oco = { workspace = true }
 paste = "1"
 reactive_graph = { workspace = true, features = ["serde"] }
 tachys = { workspace = true, features = ["reactive_graph"] }
@@ -36,7 +37,7 @@ web-sys = { version = "0.3.63", features = [
   "ShadowRootInit",
   "ShadowRootMode",
 ] }
-wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen = { version = "0.2" }
 
 [features]
 default = ["serde"]
@@ -44,13 +45,11 @@ csr = [
   "leptos_macro/csr",
   "leptos_reactive/csr",
   "leptos_server/csr",
-  "dep:wasm-bindgen",
 ]
 hydrate = [
   "leptos_macro/hydrate",
   "leptos_reactive/hydrate",
   "leptos_server/hydrate",
-  "dep:wasm-bindgen",
 ]
 default-tls = ["leptos_server/default-tls", "server_fn/default-tls"]
 rustls = ["leptos_server/rustls", "server_fn/rustls"]
