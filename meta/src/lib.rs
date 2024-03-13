@@ -47,35 +47,38 @@
 //! **Important Note:** You must enable one of `csr`, `hydrate`, or `ssr` to tell Leptos
 //! which mode your app is operating in.
 
-use cfg_if::cfg_if;
 use indexmap::IndexMap;
 use leptos::{
-    leptos_dom::{debug_warn, html::AnyElement},
-    *,
+    debug_warn,
+    reactive_graph::owner::{provide_context, use_context},
+    tachys::{
+        html::attribute::any_attribute::AnyAttribute, renderer::dom::Dom,
+    },
 };
 use std::{
     cell::{Cell, RefCell},
     fmt::Debug,
     rc::Rc,
+    sync::{Arc, RwLock},
 };
 #[cfg(any(feature = "csr", feature = "hydrate"))]
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
 
 mod body;
 mod html;
-mod link;
+/*mod link;
 mod meta_tags;
 mod script;
 mod style;
-mod stylesheet;
+mod stylesheet;*/
 mod title;
 pub use body::*;
 pub use html::*;
-pub use link::*;
+/*pub use link::*;
 pub use meta_tags::*;
 pub use script::*;
 pub use style::*;
-pub use stylesheet::*;
+pub use stylesheet::*;*/
 pub use title::*;
 
 /// Contains the current state of meta tags. To access it, you can use [`use_head`].
@@ -84,108 +87,50 @@ pub use title::*;
 /// [`provide_meta_context`].
 #[derive(Clone, Default, Debug)]
 pub struct MetaContext {
-    /// Metadata associated with the `<html>` element
-    pub html: HtmlContext,
     /// Metadata associated with the `<title>` element.
     pub title: TitleContext,
-    /// Metadata associated with the `<body>` element
-    pub body: BodyContext,
+    /*
     /// Other metadata tags.
     pub tags: MetaTagsContext,
+    */
 }
 
-/// Manages all of the element created by components.
+/// Contains the state of meta tags for server rendering.
+///
+/// This should be provided as context during server rendering.
 #[derive(Clone, Default)]
-pub struct MetaTagsContext {
-    next_id: Rc<Cell<MetaTagId>>,
-    #[allow(clippy::type_complexity)]
-    els: Rc<
-        RefCell<
-            IndexMap<
-                Oco<'static, str>,
-                (HtmlElement<AnyElement>, Option<web_sys::Element>),
-            >,
-        >,
-    >,
+pub struct ServerMetaContext {
+    inner: Arc<RwLock<ServerMetaContextInner>>,
+    /// Metadata associated with the `<title>` element.
+    pub(crate) title: TitleContext,
 }
 
-impl core::fmt::Debug for MetaTagsContext {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("MetaTagsContext").finish()
+#[derive(Default)]
+struct ServerMetaContextInner {
+    /*/// Metadata associated with the `<html>` element
+    pub html: HtmlContext,
+    /// Metadata associated with the `<title>` element.
+    pub title: TitleContext,*/
+    /// Metadata associated with the `<html>` element
+    pub(crate) html: Vec<AnyAttribute<Dom>>,
+    /// Metadata associated with the `<body>` element
+    pub(crate) body: Vec<AnyAttribute<Dom>>,
+    /*
+    /// Other metadata tags.
+    pub tags: MetaTagsContext,
+    */
+}
+
+impl Debug for ServerMetaContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerMetaContext").finish_non_exhaustive()
     }
 }
 
-impl MetaTagsContext {
-    /// Converts metadata tags into an HTML string.
-    #[cfg(any(feature = "ssr", docs))]
-    pub fn as_string(&self) -> String {
-        self.els
-            .borrow()
-            .iter()
-            .map(|(_, (builder_el, _))| {
-                builder_el.clone().into_view().render_to_string()
-            })
-            .collect()
-    }
-
-    #[doc(hidden)]
-    pub fn register(
-        &self,
-
-        id: Oco<'static, str>,
-        builder_el: HtmlElement<AnyElement>,
-    ) {
-        cfg_if! {
-            if #[cfg(any(feature = "csr", feature = "hydrate"))] {
-                use leptos::document;
-
-                let element_to_hydrate = document()
-                    .get_element_by_id(&id);
-
-                let el = element_to_hydrate.unwrap_or_else({
-                    let builder_el = builder_el.clone();
-                    move || {
-                        let head = document().head().unwrap_throw();
-                        head
-                            .append_child(&builder_el)
-                            .unwrap_throw();
-
-                        (*builder_el).clone().unchecked_into()
-                    }
-                });
-
-                on_cleanup({
-                    let el = el.clone();
-                    let els = self.els.clone();
-                    let id = id.clone();
-                    move || {
-                        let head = document().head().unwrap_throw();
-                        _ = head.remove_child(&el);
-                        els.borrow_mut().swap_remove(&id);
-                    }
-                });
-
-                self
-                    .els
-                    .borrow_mut()
-                    .insert(id, (builder_el.into_any(), Some(el)));
-
-            } else {
-                self.els.borrow_mut().insert(id, (builder_el, None));
-            }
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-struct MetaTagId(usize);
-
-impl MetaTagsContext {
-    fn get_next_id(&self) -> MetaTagId {
-        let current_id = self.next_id.get();
-        let next_id = MetaTagId(current_id.0 + 1);
-        self.next_id.set(next_id);
-        next_id
+impl ServerMetaContext {
+    /// Creates an empty [`ServerMetaContext`].
+    pub fn new() -> Self {
+        Default::default()
     }
 }
 
@@ -207,9 +152,6 @@ pub fn provide_meta_context() {
 /// call `use_head()` but a single [`MetaContext`] has not been provided at the application root.
 /// The best practice is always to call [`provide_meta_context`] early in the application.
 pub fn use_head() -> MetaContext {
-    #[cfg(debug_assertions)]
-    feature_warning();
-
     match use_context::<MetaContext>() {
         None => {
             debug_warn!(
@@ -265,9 +207,6 @@ impl MetaContext {
     /// # }
     /// ```
     pub fn dehydrate(&self) -> String {
-        use leptos::leptos_dom::HydrationCtx;
-
-        let prev_key = HydrationCtx::peek();
         let mut tags = String::new();
 
         // Title
@@ -278,9 +217,6 @@ impl MetaContext {
         }
         tags.push_str(&self.tags.as_string());
 
-        if let Some(prev_key) = prev_key {
-            HydrationCtx::continue_from(prev_key);
-        }
         tags
     }
 }
@@ -309,11 +245,4 @@ pub fn generate_head_metadata_separated() -> (String, String) {
         .and_then(|meta| meta.body.as_string())
         .unwrap_or_default();
     (head, format!("<body{body_meta}>"))
-}
-
-#[cfg(debug_assertions)]
-pub(crate) fn feature_warning() {
-    if !cfg!(any(feature = "csr", feature = "hydrate", feature = "ssr")) {
-        leptos::logging::debug_warn!("WARNING: `leptos_meta` does nothing unless you enable one of its features (`csr`, `hydrate`, or `ssr`). See the docs at https://docs.rs/leptos_meta/latest/leptos_meta/ for more information.");
-    }
 }
