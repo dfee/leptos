@@ -9,7 +9,7 @@ description = "Utilities to help build server integrations for the Leptos web fr
 
 [dependencies]
 futures = "0.3"
-leptos = { workspace = true, features = ["ssr"] }
+leptos = { workspace = true }
 leptos_hot_reload = { workspace = true }
 leptos_meta = { workspace = true }
 leptos_config = { workspace = true }
