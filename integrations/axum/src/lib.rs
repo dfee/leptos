@@ -710,7 +710,6 @@ where
                     req_parts,
                     default_res_options,
                 );
-                println!("providing additional contexts");
                 add_context();
 
                 // run app
